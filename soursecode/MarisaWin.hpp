@@ -435,7 +435,15 @@ namespace MarisaWin{
 	template<class T>
 	class InteractiveControl :public Control {
 	public:
-		virtual void HandleMessage(ExMessage* msg);
+		inline void HandleMessage(ExMessage* msg) {
+			if (HandleMsgFunctions.empty()) return;
+			auto it = HandleMsgFunctions.begin();
+			for (; it != HandleMsgFunctions.end(); it++) {
+				if (*it != NULL) {
+					(*it)(this, msg);
+				}
+			}
+		}
 		virtual void Print() = 0;
 		list<function<void(T* pcontrol,ExMessage* msg)>> HandleMsgFunctions;
 	};
@@ -564,8 +572,13 @@ namespace MarisaWin{
 			alpha = 255;
 		}
 
-		void SetImage(Picture* picture_);
-		const Picture* GetImage();
+		inline void SetImage(Picture* picture_) {
+			picture = picture_;
+		}
+
+		inline const Picture* GetImage() {
+			return picture;
+		}
 
 		enum clickstate {
 			none = 0,
@@ -624,7 +637,7 @@ namespace MarisaWin{
 			alpha = 255;
 		}
 
-		CheckBox(COORD coord_, IDentifier id_, Picture* checked_ = NULL, Picture* notchecked_, BYTE alpha_ = 255) {
+		CheckBox(COORD coord_, IDentifier id_, Picture* checked_ = NULL, Picture* notchecked_ = NULL, BYTE alpha_ = 255) {
 			coord = coord_;
 			id = id_;
 			checked = checked_;
@@ -632,9 +645,76 @@ namespace MarisaWin{
 			alpha = alpha_;
 		}
 
+		enum clickstate {
+			none = 0,
+			onclick = 1,
+			clicked = 2
+		};
 
+		inline void Mw_Default_HandleMouseMessage(CheckBox* pcontrol, ExMessage* msg) {
+			if ((checked == NULL) || (notchecked == NULL)) return;
+			Picture* picturenow = pcontrol->check ? pcontrol->checked : pcontrol->notchecked;
+			if (msg->message == WM_LBUTTONUP) {
+				if (pcontrol->onclick_ == true)
+					pcontrol->onclick_ = false;
+				else {
+					pcontrol->clickstate_ = none;
+					return;
+				}
+				if (InRect(
+					COORD{ msg->x,msg->y },
+					RECT{ pcontrol->coord.X,pcontrol->coord.Y,
+					pcontrol->coord.X + picturenow->GetImage().getwidth(),pcontrol->coord.Y + picturenow->GetImage().getheight() }))
+				{
+					check = !check;
+					pcontrol->clickstate_ = clicked;
+					return;
+				}
+			}
+			else if (msg->message == WM_LBUTTONDOWN) {
+				if (InRect(
+					COORD{ msg->x,msg->y },
+					RECT{ pcontrol->coord.X,pcontrol->coord.Y,
+					pcontrol->coord.X + picturenow->GetImage().getwidth(),pcontrol->coord.Y + picturenow->GetImage().getheight() }))
+				{
+					pcontrol->onclick_ = true;
+					pcontrol->clickstate_ = onclick;
+					return;
+				}
+			}
+			pcontrol->clickstate_ = none;
+			return;
+		}
+
+		inline BYTE GetClickstate() {
+			return clickstate_;
+		}
+
+		inline bool GetCheck() {
+			return check;
+		}
+
+		inline void SetCheckedImage(Picture* checked_) {
+			checked = checked_;
+		}
+
+		inline Picture* GetCheckImage() {
+			return checked;
+		}
+
+		inline void SetNotcheckedImage(Picture* notchecked_) {
+			notchecked = notchecked_;
+		}
+
+		inline Picture* GetNotcheckedImage() {
+			return notchecked;
+		}
+
+		void Print() override;
 	private:
 		bool check = false;
+		BYTE clickstate_ = 0;
+		bool onclick_ = false;
 		Picture* checked = NULL;
 		Picture* notchecked = NULL;
 	};

@@ -121,6 +121,6 @@ void Screen::DispatchMessageEW(ExMessage* msg) {
 	if (controllist.empty()) return;
 	list<void*>::iterator i = controllist.begin();
 	for (; i != controllist.end(); i++)
-		if (dynamic_cast<InteractiveControl*>(static_cast<Control*>(*i)) != NULL)
-			static_cast<InteractiveControl*>(*i)->HandleMessage(msg);
+		if (dynamic_cast<InteractiveControl<Control>*>(static_cast<Control*>(*i)) != NULL)
+			static_cast<InteractiveControl<Control>*>(*i)->HandleMessage(msg);
 }
