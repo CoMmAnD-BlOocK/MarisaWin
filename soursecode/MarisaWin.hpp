@@ -28,26 +28,38 @@ using namespace std;
 namespace MarisaWin {
 	typedef function<void(Graphics& graphics)> Drawfunc;
 
-	inline SIZE GetTextSizebyFont(Font& font,wstring text)
+	inline SizeF GetTextBounds(const Font* font, const StringFormat& strFormat, const wstring& szText)
 	{
-		Bitmap bitmap(0, 0);
-		Graphics g(&bitmap);
-		
+		GraphicsPath path;
+		FontFamily fontfamily;
+		font->GetFamily(&fontfamily);
+		path.AddString(szText.c_str(), -1, &fontfamily, font->GetStyle(), font->GetSize(), PointF(0, 0), &strFormat);
+		RectF rcBound;
+		path.GetBounds(&rcBound);
+		if (szText.back() == L' ') {
+			RectF rectf;
+			Bitmap b(0, 0);
+			Graphics g(&b);
+			g.MeasureString(L" ", -1, font, PointF(0, 0), &strFormat, &rectf);
+			rcBound.Width += rectf.Width;
+		}
+		return SizeF(rcBound.Width, rcBound.Height + 2);
 	}
 
 	class Control {
 	public:
-		bool hide = false;
-		wstring controlname = L"";
-		PointF coord{ 0,0 };
+		bool hide = false;			//If it is true,this control won't paint on the window
+		wstring controlname = L"";	//The identifier of control
+		PointF coord{ 0,0 };		//The coordinate of control
 		BYTE alpha = 255;
 		list<function<void(void* pcontrol, HWND hWnd, UINT message, WPARAM wParam, LPARAM lParam)>>
 			HandleMsgFunc;
-		list<Drawfunc> UserDrawFuncBC;
-		list<Drawfunc> UserDrawFuncAC;
+		list<Drawfunc> UserDrawFuncBC;	//Execute before execute default painting control
+		list<Drawfunc> UserDrawFuncAC;	//Execute bfter execute default painting control
 
 		inline void Draw(Graphics& graphics)
 		{
+			if (hide) return;
 			for (auto i = UserDrawFuncBC.begin(); i != UserDrawFuncBC.end(); i++)
 				(*i)(graphics);
 			Control_Draw(graphics);
@@ -55,7 +67,7 @@ namespace MarisaWin {
 				(*i)(graphics);
 		}
 
-		virtual SIZE GetSize() = 0;
+		virtual SizeF GetSize() = 0;
 		void SetCoord(const PointF& coord_);
 
 		inline void HandleMessage(HWND hWnd, UINT message, WPARAM wParam, LPARAM lParam)
@@ -70,7 +82,9 @@ namespace MarisaWin {
 	class Screen {
 	public:
 		void PushControlFront(void* control);
+		void PushControlFront(size_t controlcount, ...);
 		void PushControlBack(void* control);
+		void PushControlBack(size_t controlcount, ...);
 
 		void PopControlFront();
 		void PopControlBack();
@@ -105,6 +119,32 @@ namespace MarisaWin {
 		list<void*> ControlList;
 	};
 
+	class DelayedFunction {
+		friend class Window;
+	public:
+		DelayedFunction(
+			const function<void(void)> &delayedfunction_,
+			size_t delayedtimes_ = 0,
+			size_t delayedinterval_ = 0,
+			bool staticfunction_ = false,
+			bool executenow = true)
+		{
+			delayedtimes	= delayedtimes_;
+			delayedinterval	= delayedinterval_;
+			delayedfunction	= delayedfunction_;
+			staticfunction	= staticfunction_;
+			if (!executenow) countdown = delayedinterval_;
+		}
+
+		size_t delayedtimes = 0;
+		size_t delayedinterval = 0;
+		function<void(void)> delayedfunction;
+
+		bool staticfunction = false;
+	private:
+		size_t countdown;
+	};
+
 	class Window {
 	public:
 		Window(HWND hWnd_, USHORT fps_ = 60)
@@ -127,7 +167,13 @@ namespace MarisaWin {
 		inline bool StartManageWindow()
 		{
 			if (managing || (!IsWindow(hWnd))) return true;
-			origin_lpfnWndProc = (WNDPROC)GetWindowLong(hWnd, GWLP_WNDPROC);
+
+			GdiplusStartup(&gdiplusToken, &gdiplusStartupInput, NULL);
+
+			origin_lpfnWndProc = (WNDPROC)GetWindowLongPtr(hWnd, GWLP_WNDPROC);
+			SetWindowLongPtr(hWnd, GWLP_USERDATA, (LONG_PTR)this);
+			SetWindowLongPtr(hWnd, GWLP_WNDPROC, (LONG_PTR)WndProc_MarisaWin);
+
 			managing = true;
 			return false;
 		}
@@ -135,7 +181,12 @@ namespace MarisaWin {
 		inline bool StopManageWindow()
 		{
 			if (!managing) return true;
-			SetWindowLong(hWnd, GWLP_WNDPROC, (long)origin_lpfnWndProc);
+
+			GdiplusShutdown(gdiplusToken);
+
+			SetWindowLongPtr(hWnd, GWLP_WNDPROC, (LONG_PTR)origin_lpfnWndProc);
+			SetWindowLongPtr(hWnd, GWLP_USERDATA, (LONG_PTR)0);
+
 			managing = false;
 			return false;
 		}
@@ -152,13 +203,13 @@ namespace MarisaWin {
 		}
 
 		inline void SetUserWndproc(
-			function<void(HWND hWnd, UINT message, WPARAM wParam, LPARAM lParam)>* user_wndproc_)
+			function<bool(HWND hWnd, UINT message, WPARAM wParam, LPARAM lParam)>* user_wndproc_)
 		{
 			user_wndproc = user_wndproc_;
 		}
 
 		inline
-		const function<void(HWND hWnd, UINT message, WPARAM wParam, LPARAM lParam)>*
+		const function<bool(HWND hWnd, UINT message, WPARAM wParam, LPARAM lParam)>*
 			GetUserWndproc()
 		{
 			return user_wndproc;
@@ -184,6 +235,28 @@ namespace MarisaWin {
 		{
 			return user_drawfunc_ac;
 		}
+
+		inline void SetFps(USHORT fps_)
+		{
+			fps = fps_;
+		}
+
+		inline USHORT GetFps() const
+		{
+			return fps;
+		}
+
+		inline void SetIcon(HICON hIcon) {
+			SendMessage(hWnd, WM_SETICON, ICON_SMALL, (LPARAM)hIcon);
+		}
+
+		~Window()
+		{
+			StopManageWindow();
+		}
+
+		//The delayedfunction list
+		list<DelayedFunction> delayedfunction;
 	private:
 		HWND		hWnd = NULL;
 		USHORT		fps  = 60;
@@ -191,39 +264,89 @@ namespace MarisaWin {
 		WNDPROC		origin_lpfnWndProc = NULL;
 		bool		managing = false;
 
-		function<void(HWND hWnd, UINT message, WPARAM wParam, LPARAM lParam)>* user_wndproc = NULL;
+		GdiplusStartupInput gdiplusStartupInput;
+		ULONG_PTR           gdiplusToken;
+
+		//To handle message in window-process function
+		function<bool(HWND hWnd, UINT message, WPARAM wParam, LPARAM lParam)>* user_wndproc = NULL;
+
 		Drawfunc* user_drawfunc_bc = NULL;	//Before paint control
 		Drawfunc* user_drawfunc_ac = NULL;	//After paint control
 
-		LRESULT CALLBACK WndProc_MarisaWin(HWND hWnd, UINT message,
+		static LRESULT CALLBACK WndProc_MarisaWin(HWND hWnd, UINT message,
 			WPARAM wParam, LPARAM lParam)
 		{
-			static clock_t lastframe = clock();
-			if (user_wndproc != NULL)
-			(*user_wndproc)(hWnd, message, wParam, lParam);
+			//Get the pointer of window class
+			Window* this_ = (Window*)GetWindowLongPtr(hWnd, GWLP_USERDATA);
+			if (this_->user_wndproc != NULL)
+				if ((*this_->user_wndproc)(hWnd, message, wParam, lParam)) return 0;
 			
-			switch (message)
-			{
-				case WM_PAINT:
+			static const auto redrawwindow = [=]()
 				{
-					if (clock() - lastframe < 1000 / fps) return 0;
-					lastframe = clock();
 					RECT windowsize;
 					GetClientRect(hWnd, &windowsize);
 					Bitmap buf(windowsize.right - windowsize.left,
 						windowsize.bottom - windowsize.top);
 					Graphics paintbuffer(&buf);
+					SolidBrush clearbkground(Color(255, 0, 0, 0));
+					paintbuffer.FillRectangle(&clearbkground, 
+						Rect(windowsize.left,windowsize.top,windowsize.right,windowsize.bottom));
+					paintbuffer.SetSmoothingMode(SmoothingModeAntiAlias);
+					paintbuffer.SetTextRenderingHint(TextRenderingHintAntiAlias);
 					//Begin Paint on the Buffer
 
-					(*user_drawfunc_bc)(paintbuffer);
-					screen_now->DrawScreen(paintbuffer);
-					(*user_drawfunc_ac)(paintbuffer);
+					if (this_->user_drawfunc_bc != NULL)
+						(*this_->user_drawfunc_bc)(paintbuffer);
+
+					if (this_->screen_now != NULL)
+						this_->screen_now->DrawScreen(paintbuffer);
+
+					if (this_->user_drawfunc_ac != NULL)
+						(*this_->user_drawfunc_ac)(paintbuffer);
 
 					PAINTSTRUCT ps{};
 					Graphics window(BeginPaint(hWnd, &ps));
 					window.DrawImage(&buf, 0, 0);
 					EndPaint(hWnd, &ps);
+				};
+
+			static clock_t frame = 0;
+			switch (message)
+			{
+				case WM_PAINT:
+				{
+					//Refresh the window
+					if (this_->fps == 0) {
+						redrawwindow();
+					}
+					else if ((clock() - frame >= 1000 / this_->fps) && this_->fps != 0) {
+						for (auto i = this_->delayedfunction.begin(); i != this_->delayedfunction.end(); i++) {
+							if (i->staticfunction) i->delayedfunction();
+							else {
+								if (i->delayedtimes == 0) {
+									auto unnamed = i; i--;
+									this_->delayedfunction.erase(unnamed);
+									continue;
+								}
+								if (i->countdown == 0) {
+									i->delayedfunction();
+									i->countdown = i->delayedinterval;
+									i->delayedtimes--;
+								}
+								else i->countdown--;
+							}
+						}
+						redrawwindow();
+						frame = clock();
+					}
+					return 0;
 				}
+				case WM_SIZE:
+					redrawwindow();
+					InvalidateRect(hWnd, NULL, false);
+					UpdateWindow(hWnd);
+				case WM_ERASEBKGND:
+					return 0;
 				case WM_DESTROY:
 					PostQuitMessage(0);
 					return 0;
@@ -240,11 +363,10 @@ namespace MarisaWin {
 
 	class Label : public Control{
 	public:
-		
 		Label()
 		{
-			FontFamily fontfamily(L"ËÎÌå");
-			font = new Font(&fontfamily, 16, FontStyleRegular, UnitPixel);
+			FontFamily fontfamily(L"ºÚÌå");
+			font = Font(&fontfamily, 24, FontStyleRegular, UnitPixel).Clone();
 			textcolor.textcolor = Color(255, 0, 0, 0);
 			textcolor.backgroundcolor = Color(0, 0, 0, 0);
 		}
@@ -257,6 +379,15 @@ namespace MarisaWin {
 			text = text_;
 		}
 
+		Label(PointF coord_, TextColor textcolor_, wstring text_)
+		{
+			FontFamily fontfamily(L"ºÚÌå");
+			font = Font(&fontfamily, 24, FontStyleRegular, UnitPixel).Clone();
+			coord = coord_;
+			textcolor = textcolor_;
+			text = text_;
+		}
+
 		void operator =(const Label& label)
 		{
 			delete font;
@@ -264,15 +395,27 @@ namespace MarisaWin {
 			textcolor = label.textcolor;
 		}
 
-		~Label()
+		inline SizeF GetSize()
 		{
-			delete font;
+			return GetTextBounds(font, 0, text);
 		}
 
 		TextColor textcolor;
 		wstring text = L"";
 	private:
-		void Control_Draw(Graphics& graphics) override;
+		void Control_Draw(Graphics& graphics);
 		Font* font = NULL;
 	};
+
+	/*class Button : Control {
+	public:
+		Button(Bitmap *picture_) {
+			picture = picture_->Clone(
+				0,0,picture_->GetWidth(),picture_->GetHeight(),
+				picture_->GetPixelFormat());
+		}
+
+	private:
+		Bitmap* picture = NULL;
+	};*/
 }
