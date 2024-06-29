@@ -1,100 +1,16 @@
 #include "MarisaWin.hpp"
+using namespace MarisaWin;
 
-void MarisaWin::Screen::PushControlFront(void* control)
+void Screen::SortControl(void* control, size_t where_)
 {
-	if (control == NULL) return;
-	ControlList.push_front(control);
-}
-
-void MarisaWin::Screen::PushControlFront(size_t controlcount, ...)
-{
-	va_list controls;
-	va_start(controls, controlcount);
-	for (size_t i = 0; i < controlcount; i++) {
-		void* buffer = va_arg(controls, void*);
-		if (buffer != NULL)  ControlList.push_front(buffer);
-	}
-}
-
-void MarisaWin::Screen::PushControlBack(void* control)
-{
-	if (control == NULL) return;
-	ControlList.push_back(control);
-}
-
-void MarisaWin::Screen::PushControlBack(size_t controlcount, ...)
-{
-	va_list controls;
-	va_start(controls, controlcount);
-	for (size_t i = 0; i < controlcount; i++) {
-		void* buffer = va_arg(controls, void*);
-		if (buffer != NULL)  ControlList.push_back(buffer);
-	}
-}
-
-void MarisaWin::Screen::PopControlFront()
-{
-	if (!ControlList.empty())
-	ControlList.pop_front();
-}
-
-void MarisaWin::Screen::PopControlBack()
-{
-	if (!ControlList.empty())
-	ControlList.pop_back();
-}
-
-void MarisaWin::Screen::AddControl(void* control, size_t where_)
-{
+	if (ControlList.empty()) return;
 	if (where_ >= ControlList.size()) return;
-	if (control == NULL) return;
-
-	list<void*>::iterator i = ControlList.begin();
-	for (; where_ != 0; where_--) i++;
-	ControlList.insert(i, control);
-}
-
-void MarisaWin::Screen::RemoveControl(void* control)
-{
-	if (!ControlList.empty())
-	for (list<void*>::iterator i = ControlList.begin(); i != ControlList.end(); i++) {
-		if (*i == control) {
-			ControlList.erase(i);
-			return;
-		}
-	}
-}
-
-void MarisaWin::Screen::RemoveControl(const wstring& controlname)
-{
-	if (!ControlList.empty())
-	for (list<void*>::iterator i = ControlList.begin(); i != ControlList.end(); i++) {
-		if (((Control*)(*i))->controlname == controlname) {
-			ControlList.erase(i);
-			return;
-		}
-	}
-}
-
-void MarisaWin::Screen::RemoveControl(size_t where_)
-{
-	if (!ControlList.empty()) return;
-	if (where_ >= ControlList.size()) return;
-	list<void*>::iterator i = ControlList.begin();
-	for (; where_ != 0; where_--)i++;
-	ControlList.erase(i);
-}
-
-void MarisaWin::Screen::SortControl(void* control, size_t where_)
-{
-	if (!ControlList.empty()) return;
-	if (where_ >= ControlList.size()) return;
-	list<void*>::iterator i = ControlList.begin();
-	list<void*>::iterator newplace = ControlList.begin();
+	auto i = ControlList.begin();
+	auto newplace = ControlList.begin();
 
 	for (; i != ControlList.end(); i++) {
 		if (*i == control) break;
-		if (i == ControlList.end()--) return;
+		if (i == --ControlList.end()) return;
 	}
 
 	for (; where_ != 0; where_--)newplace++;
@@ -102,16 +18,16 @@ void MarisaWin::Screen::SortControl(void* control, size_t where_)
 	ControlList.insert(newplace, control);
 }
 
-void MarisaWin::Screen::SortControl(const wstring& controlname, size_t where_)
+void Screen::SortControl(const wstring& controlname, size_t where_)
 {
-	if (!ControlList.empty()) return;
+	if (ControlList.empty()) return;
 	if (where_ >= ControlList.size()) return;
-	list<void*>::iterator i = ControlList.begin();
-	list<void*>::iterator newplace = ControlList.begin();
+	auto i = ControlList.begin();
+	auto newplace = ControlList.begin();
 
 	for (; i != ControlList.end(); i++) {
 		if (((Control*)(*i))->controlname == controlname) break;
-		if (i == ControlList.end()--) return;
+		if (i == --ControlList.end()) return;
 	}
 
 	for (; where_ != 0; where_--)newplace++;
@@ -120,32 +36,116 @@ void MarisaWin::Screen::SortControl(const wstring& controlname, size_t where_)
 	ControlList.insert(newplace, control);
 }
 
-size_t MarisaWin::Screen::LookUpControl(void* control)
+size_t Screen::LookUpControl(void* control)
 {
-	if (!ControlList.empty()) return -1;
+	if (ControlList.empty()) return -1;
 	size_t ret = 0;
-	for (list<void*>::iterator i = ControlList.begin(); i != ControlList.end(); i++,ret++) {
+	for (auto i = ControlList.begin(); i != ControlList.end(); i++,ret++) {
 		if (*i == control) break;
-		if (i++ == ControlList.end()) return -1;
+		if (i == --ControlList.end()) return -1;
 	}
 	return ret;
 }
 
-size_t MarisaWin::Screen::LookUpControl(const wstring& controlname)
+size_t Screen::LookUpControl(const wstring& controlname)
 {
-	if (!ControlList.empty()) return -1;
+	if (ControlList.empty()) return -1;
 	size_t ret = 0;
-	for (list<void*>::iterator i = ControlList.begin(); i != ControlList.end(); i++, ret++) {
+	for (auto i = ControlList.begin(); i != ControlList.end(); i++, ret++) {
 		if (((Control*)(*i))->controlname == controlname) break;
+		if (i == --ControlList.end()) return -1;
 	}
 	return ret;
 }
 
-void* MarisaWin::Screen::LookUpControl(size_t where_)
+void* Screen::LookUpControl(size_t where_)
 {
-	if (!ControlList.empty()) return NULL;
+	if (ControlList.empty()) return NULL;
 	if (where_ >= ControlList.size()) return NULL;
-	list<void*>::iterator i = ControlList.begin();
+	auto i = ControlList.begin();
 	for (; where_ != 0; where_--)i++;
 	return *i;
+}
+
+bool Screen::DeleteControl(void* control)
+{
+	if (ControlList.empty()) return false;
+	for (auto i = ControlList.begin(); i != ControlList.end(); i++) {
+		if ((*i) = control) {
+			delete ((Control*)control);
+			ControlList.erase(i);
+			return true;
+		}
+	}
+	return false;
+}
+
+bool Screen::DeleteControl(const wstring& controlname)
+{
+	if (ControlList.empty()) return false;
+	for (auto i = ControlList.begin(); i != ControlList.end(); i++) {
+		if (((Control*)(*i))->controlname == controlname) {
+			delete ((Control*)(*i));
+			ControlList.erase(i);
+			return true;
+		}
+	}
+	return false;
+}
+
+bool Screen::DeleteControl(size_t where_)
+{
+	if (ControlList.empty()) return false;
+	auto i = ControlList.begin();
+	for (; where_ != 0; where_--) {
+		if (i == ControlList.end()) return false;
+		i++;
+	}
+	delete ((Control*)(*i));
+	ControlList.erase(i);
+	return true;
+}
+
+void Screen::DrawScreen(Graphics& g)
+{
+	if (!ControlList.empty())
+		for (auto i = ControlList.begin(); i != ControlList.end(); i++) {
+			((Control*)(*i))->Draw(g);
+		}
+}
+
+void Screen::DeleteScreen()
+{
+	if (ControlList.empty()) return;
+	for (auto i = ControlList.begin(); i != ControlList.end(); i++) {
+		delete ((Control*)(*i));
+	}
+	ControlList.clear();
+}
+
+void Screen::EraseControl(void* control)
+{
+	if (ControlList.empty()) return;
+	for (auto i = ControlList.begin(); i != ControlList.end(); i++) {
+		if ((*i) = control) {
+			//The control has been destructed just now.
+			ControlList.erase(i);
+			return;
+		}
+	}
+}
+
+void Screen::MW_DispatchMessage(HWND hWnd, UINT message, WPARAM wParam, LPARAM lParam)
+{
+	if (!ControlList.empty())
+		for (auto i = ControlList.begin(); i != ControlList.end(); i++) {
+			((Control*)(*i))->HandleMessage(hWnd, message, wParam, lParam);
+		}
+}
+
+bool Screen::AddControl(void* control)
+{
+	if (LookUpControl(((Control*)control)->controlname) != -1) return false;
+	ControlList.push_front(control);
+	return true;
 }

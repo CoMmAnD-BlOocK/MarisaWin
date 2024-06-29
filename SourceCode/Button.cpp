@@ -1,11 +1,12 @@
 #include "MarisaWin.hpp"
+using namespace MarisaWin;
 
-SizeF MarisaWin::Button::GetControlSize()
+SizeF Button::GetControlSize()
 {
 	return SizeF(picture->GetWidth(), picture->GetHeight());
 }
 
-void MarisaWin::Button::Control_Draw(Graphics& graphics)
+void Button::Control_Draw(Graphics& graphics)
 {
 	graphics.DrawImage(picture, PointF(0, 0));
 }

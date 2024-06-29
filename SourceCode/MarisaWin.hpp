@@ -77,26 +77,21 @@ namespace MarisaWin {
 		{
 			id = newIDBinder.id;
 			data_instantiated = true;
-			pvariable = new T(*newIDBinder.pvariable);
+			pvariable = new T((*newIDBinder.pvariable));
 		}
 
 		IDBinder(IDBinder<T>&& newIDBinder)
 		{
-			id = newIDBinder.handle_;
+			id = newIDBinder.id;
 			data_instantiated = true;
-			pvariable = new T(newIDBinder.pvariable);
+			pvariable = new T((*newIDBinder.pvariable));
 		}
 
-		static inline IDBinder<T>& NewIDBinder(T pvariable_, UINT id_ = NULL)
+		static inline IDBinder<T> NewIDBinder(T pvariable_, UINT id_ = NULL)
 		{
 			IDBinder<T> ret(new T(pvariable_), id_);
 			ret.data_instantiated = true;
 			return ret;
-		}
-
-		static inline IDBinder<T>* NewIDBinder_Heap(T pvariable_, UINT id_ = NULL)
-		{
-			return new IDBinder<T>(NewIDBinder(pvariable_,id_));
 		}
 		
 		inline void operator = (T* pvariable_)
@@ -137,11 +132,52 @@ namespace MarisaWin {
 		T* pvariable = NULL;
 	};
 
-	class Control {
+	class Screen {
+		friend class Control;
 	public:
-#define ConstrControl PointF coord_, const wstring& controlname_
-#define ConstrControlAssign coord = coord;\
-controlname = controlname;
+		Screen(){}
+		void SortControl(void* control, size_t where_);
+		void SortControl(const wstring& controlname, size_t where_);
+
+		size_t LookUpControl(void* control);
+		size_t LookUpControl(const wstring& controlname);
+		void* LookUpControl(size_t where_);
+
+		bool DeleteControl(void* control);
+		bool DeleteControl(const wstring& controlname);
+		bool DeleteControl(size_t where_);
+
+		void DrawScreen(Graphics& g);
+		void MW_DispatchMessage(HWND hWnd, UINT message, WPARAM wParam, LPARAM lParam);
+		void DeleteScreen();
+
+		~Screen()
+		{
+			DeleteScreen();
+		}
+	private:
+		list<void*> ControlList;
+		bool AddControl(void* control);
+		void EraseControl(void* control);
+	};
+
+	class Control {
+		friend class Screen;
+	public:
+#define ConstrControl Screen* screen_, PointF coord_, const wstring& controlname_
+
+#define ConstrControlAssign(ControlClassname) \
+		if (screen_ == NULL) return NULL;\
+		ControlClassname* newcontrol = new ControlClassname;\
+		newcontrol->screen = screen_;\
+		newcontrol->coord = coord_;\
+		newcontrol->controlname = controlname_;
+
+#define ConstrControlReturn \
+		if (AddControl(screen_, newcontrol)) return newcontrol;\
+		delete newcontrol;\
+		return NULL;
+
 		typedef function<void(void* pcontrol, HWND hWnd, UINT message, WPARAM wParam, LPARAM lParam)> HandleMsgFunc;
 		bool hide = false;			//If it is true,this control won't paint on the window
 		wstring controlname = L"";	//The identifier of control
@@ -174,63 +210,34 @@ controlname = controlname;
 
 		inline void HandleMessage(HWND hWnd, UINT message, WPARAM wParam, LPARAM lParam)
 		{
+			MW_DefWindowProc(hWnd, message, wParam, lParam);
+
 			for (auto i = UserHandleMsgFunc.begin(); i != UserHandleMsgFunc.end(); i++)
 				(**(*i))((void*)this, hWnd, message, wParam, lParam);
-
-			MW_DefWindowProc(hWnd, message, wParam, lParam);
 		}
 
 		inline bool PointInControl(PointF point)
 		{
-			RectF controlrect(coord.X, coord.Y, coord.X + GetControlSize().Width, coord.Y + GetControlSize().Height);
+			RectF controlrect(coord.X, coord.Y, GetControlSize().Width, GetControlSize().Height);
 			return controlrect.Contains(point);
 		}
 	private:
 		virtual void Control_Draw(Graphics& graphics) = 0;
-		virtual void MW_DefWindowProc(HWND hWnd,UINT Msg,WPARAM wParam,LPARAM lParam) = 0;
-#define MW_DefWindowProc_ MW_DefWindowProc(HWND hWnd,UINT Msg,WPARAM wParam,LPARAM lParam)
-	};
-
-	class Screen {
-	public:
-		void PushControlFront(void* control);
-		void PushControlFront(size_t controlcount, ...);
-		void PushControlBack(void* control);
-		void PushControlBack(size_t controlcount, ...);
-
-		void PopControlFront();
-		void PopControlBack();
-
-		void AddControl(void* control, size_t where_);
-
-		void RemoveControl(void* control);
-		void RemoveControl(const wstring& controlname);
-		void RemoveControl(size_t where_);
-
-		void SortControl(void* control, size_t where_);
-		void SortControl(const wstring& controlname, size_t where_);
-
-		size_t LookUpControl(void* control);
-		size_t LookUpControl(const wstring& controlname);
-		void* LookUpControl(size_t where_);
-
-		inline void DrawScreen(Graphics& g)
+		virtual void MW_DefWindowProc(HWND hWnd, UINT Msg, WPARAM wParam, LPARAM lParam) = 0;
+		virtual void Destructor() = 0;
+		#define MW_DefWindowProc_ MW_DefWindowProc(HWND hWnd,UINT Msg,WPARAM wParam,LPARAM lParam)
+	protected:
+		Screen* screen = NULL;
+		static inline bool AddControl(Screen* screen, void* control)
 		{
-			if (!ControlList.empty())
-			for (list<void*>::iterator i = ControlList.begin(); i != ControlList.end(); i++) {
-				((Control*)(*i))->Draw(g);
-			}
+			return screen->AddControl(control);
 		}
 
-		inline void MW_DispatchMessage(HWND hWnd, UINT message, WPARAM wParam, LPARAM lParam)
+		inline void DeleteControl()
 		{
-			if (!ControlList.empty())
-			for (list<void*>::iterator i = ControlList.begin(); i != ControlList.end(); i++) {
-				((Control*)(*i))->HandleMessage(hWnd, message, wParam, lParam);
-			}
+			if (screen != NULL)
+			screen->EraseControl(this);
 		}
-	private:
-		list<void*> ControlList;
 	};
 
 	class DelayedFunction {
@@ -476,30 +483,23 @@ controlname = controlname;
 
 	class Label : public Control{
 	public:
-		Label()
+		static Label* newLabel(ConstrControl, const Font& font_, TextColor textcolor_, wstring text_)
 		{
-			FontFamily fontfamily(L"ºÚÌå");
-			font = Font(&fontfamily, 24, FontStyleRegular, UnitPixel).Clone();
-			textcolor.textcolor = Color(255, 0, 0, 0);
-			textcolor.backgroundcolor = Color(0, 0, 0, 0);
+			ConstrControlAssign(Label)
+			newcontrol->font = font_.Clone();
+			newcontrol->textcolor = textcolor_;
+			newcontrol->text = text_;
+			ConstrControlReturn
 		}
 
-		Label(ConstrControl, const Font& font_, TextColor textcolor_, wstring text_)
+		static Label* newLabel(ConstrControl, TextColor textcolor_, wstring text_)
 		{
-			ConstrControlAssign
-			font = font_.Clone();
-			textcolor = textcolor_;
-			text = text_;
-		}
-
-		Label(ConstrControl, TextColor textcolor_, wstring text_)
-		{
-			ConstrControlAssign
+			ConstrControlAssign(Label);
 			FontFamily fontfamily(L"ºÚÌå");
-			font = Font(&fontfamily, 24, FontStyleRegular, UnitPixel).Clone();
-			coord = coord_;
-			textcolor = textcolor_;
-			text = text_;
+			newcontrol->font = Font(&fontfamily, 24, FontStyleRegular, UnitPixel).Clone();
+			newcontrol->textcolor = textcolor_;
+			newcontrol->text = text_;
+			ConstrControlReturn
 		}
 
 		void operator =(const Label& label)
@@ -516,37 +516,61 @@ controlname = controlname;
 
 		TextColor textcolor;
 		wstring text = L"";
+
+		~Label()
+		{
+			if (font != NULL) font->~Font();
+			DeleteControl();
+		}
 	private:
+		Label()
+		{
+			FontFamily fontfamily(L"ºÚÌå");
+			font = Font(&fontfamily, 24, FontStyleRegular, UnitPixel).Clone();
+			textcolor.textcolor = Color(255, 0, 0, 0);
+			textcolor.backgroundcolor = Color(0, 0, 0, 0);
+		}
 		void Control_Draw(Graphics& graphics);
 		void MW_DefWindowProc_;
 		Font* font = NULL;
+
+		inline void Destructor()
+		{
+			this->~Label();
+		}
 	};
 
 	class Button : public Control {
 	public:
-		Button(ConstrControl, Bitmap *picture_) {
-			ConstrControlAssign
-			coord = coord_;
-			picture = picture_->Clone(
+		static Button* newButton(ConstrControl, Bitmap *picture_) {
+			ConstrControlAssign(Button)
+			newcontrol->picture = picture_->Clone(
 				0,0,picture_->GetWidth(),picture_->GetHeight(),
 				picture_->GetPixelFormat());
+			ConstrControlReturn
 		}
 
 		inline void MW_DefWindowProc_
 		{
+			if (clickstate == clicked) clickstate = none;
 			switch (Msg)
 			{
-				if (clickstate == clicked) clickstate = none;
 			case WM_LBUTTONDOWN:
-				if ((clickstate == none)&&PointInControl(PointF(LOWORD(lParam), HIWORD(lParam))))
+			{
+				int x = LOWORD(lParam);
+				int y = HIWORD(lParam);
+				if ((clickstate == none) && PointInControl(PointF(LOWORD(lParam), HIWORD(lParam))))
 					clickstate = clicking;
+				break;
+			}
 			case WM_LBUTTONUP:
 				if (clickstate == clicking)
 					clickstate = clicked;
+				break;
 			case WM_MOUSEMOVE:
-				if ((clickstate == clicking) && !PointInControl(PointF(LOWORD(lParam), HIWORD(lParam))))
+				if ((clickstate == clicking) && (!PointInControl(PointF(LOWORD(lParam), HIWORD(lParam)))))
 					clickstate = none;
-			break;
+				break;
 			}
 		}
 
@@ -554,8 +578,18 @@ controlname = controlname;
 		
 		enum clickstate_{none, clicking, clicked};
 		clickstate_ clickstate = none;
+
+		~Button()
+		{
+			DeleteControl();
+		}
 	private:
 		void Control_Draw(Graphics& graphics);
 		Bitmap* picture = NULL;
+
+		inline void Destructor()
+		{
+			this->~Button();
+		}
 	};
 }

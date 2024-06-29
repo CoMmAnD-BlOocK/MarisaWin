@@ -1,5 +1,7 @@
 #include "MarisaWin.hpp"
-void MarisaWin::Label::Control_Draw(Graphics& graphics)
+using namespace MarisaWin;
+
+void Label::Control_Draw(Graphics& graphics)
 {
 	SizeF size = GetTextBounds(font, 0, text);
 	Bitmap buffer(size.Width, size.Height);
@@ -16,4 +18,4 @@ void MarisaWin::Label::Control_Draw(Graphics& graphics)
 	graphics.DrawImage(&buffer, PointF(0, 0));
 }
 
-void MarisaWin::Label::MW_DefWindowProc_ {}
+void Label::MW_DefWindowProc_ {}
